@@ -13,3 +13,14 @@ average score and grade together in one organised result section.
 
 Finally, I formatted the average score to two decimal places using `.2f`
 to make the result easier to read.
+
+## Completion Checklist
+
+- [x] I created `day01_profile.py`.
+- [x] I used variables.
+- [x] I used `input()`.
+- [x] I used arithmetic operators.
+- [x] I used `if`, `elif`, and `else`.
+- [x] I understood the difference between `=` and `==`.
+- [x] I reviewed my code with AI and recorded what I learned.
+- [x] I committed and pushed today's work to GitHub.
