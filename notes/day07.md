@@ -152,7 +152,7 @@ AI suggestions should not automatically be accepted. I should inspect my project
 - [x] I investigated an import error.
 - [x] I reviewed my project with AI.
 - [x] I verified an AI suggestion myself.
-- [ ] I committed and pushed Day 7 to GitHub.
+- [x] I committed and pushed Day 7 to GitHub.
 
 ## Self Assessment
 
