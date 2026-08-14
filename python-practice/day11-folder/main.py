@@ -9,7 +9,7 @@ course1 = course("Software Engineering", "CSC425",department1)
 course2 = course("Human and Computer Interaction", "CSC441",department2)
 
 student1 = student("mamba","22CD032179", [32,54,47,96], course1)
-student2 = student("osita","22CD032139", [32,54,47,96], course1)
+student2 = student("Micheal","22CD032139", [32,54,47,96], course1)
 student3 = student("divine","22CD032177", [92,64,77,66], course2)
 
 
