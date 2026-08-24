@@ -10,7 +10,6 @@ create Table vouchers (
     merchant_id INTEGER REFERENCES merchants(id)
 
 );
-
 create Table transactions (
     id INTEGER PRIMARY KEY,
     voucher_id INTEGER REFERENCES vouchers(id),
