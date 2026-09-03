@@ -65,7 +65,7 @@ def get_filtered_tasks(
             if item["priority"] >= min_priority
         ]
 
-    return filtered_tasks
+    return  filtered_tasks
 
 
 # GET FILTERED TASKS
