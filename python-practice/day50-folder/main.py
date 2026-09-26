@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI,HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from sqlalchemy import create_engine, select
@@ -39,6 +39,9 @@ class TaskCreate(BaseModel):
     title: str
     priority: int = 3
 
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    priority: int | None = None
 
 class TaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -53,6 +56,21 @@ def get_session():
     with Session(engine) as session:
         yield session
 
+# TASK Retrieve dependency
+def get_task_or_404(
+    task_id: int,
+    session: Session
+):
+
+    task = session.get(Task, task_id)
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    return task
 
 app = FastAPI()
 
@@ -69,6 +87,19 @@ def get_tasks(
         select(Task)
     ).all()
 
+@app.get(
+    "/tasks/{task_id}",
+    response_model=TaskResponse
+)
+def get_task(
+    task_id: int,
+    session: Session = Depends(get_session)
+):
+
+    return get_task_or_404(
+        task_id,
+        session
+    )
 
 @app.post(
     "/tasks",
@@ -90,3 +121,46 @@ def create_task(
     session.refresh(db_task)
 
     return db_task
+
+@app.patch(
+    "/tasks/{task_id}",
+    response_model=TaskResponse
+)
+def update_task(
+    task_id: int,
+    task_update: TaskUpdate,
+    session: Session = Depends(get_session)
+):
+
+    task = get_task_or_404(
+        task_id,
+        session
+    )
+
+    update_data = task_update.model_dump(
+        exclude_unset=True
+    )
+
+    for field, value in update_data.items():
+        setattr(task, field, value)
+
+    session.commit()
+    session.refresh(task)
+
+    return task
+@app.delete(
+    "/tasks/{task_id}",
+    status_code=204
+)
+def delete_task(
+    task_id: int,
+    session: Session = Depends(get_session)
+):
+
+    task = get_task_or_404(
+        task_id,
+        session
+    )
+
+    session.delete(task)
+    session.commit()
