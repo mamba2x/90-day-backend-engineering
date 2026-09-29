@@ -52,6 +52,10 @@ class UserCreate(BaseModel):
     email: str
     password: str
 
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 
 class UserResponse(BaseModel):
     model_config = ConfigDict(
@@ -61,7 +65,9 @@ class UserResponse(BaseModel):
     id: int
     email: str
 
-
+class LoginResponse(BaseModel):
+    message: str
+ 
 # --------------------------------------------------
 # Password Hashing
 # --------------------------------------------------
@@ -126,3 +132,39 @@ def register_user(
     session.refresh(db_user)
 
     return db_user
+
+@app.post(
+    "/login",
+    response_model=LoginResponse
+)
+def login_user(
+    user: UserLogin,
+    session: Session = Depends(get_session)
+):
+
+    db_user = session.scalar(
+        select(User).where(
+            User.email == user.email
+        )
+    )
+
+    if db_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+
+    password_is_valid = password_hash.verify(
+        user.password,
+        db_user.hashed_password
+    )
+
+    if not password_is_valid:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+
+    return {
+        "message": "Login successful"
+    }
