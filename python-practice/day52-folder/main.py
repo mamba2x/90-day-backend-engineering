@@ -1,3 +1,7 @@
+from datetime import datetime, timedelta, timezone
+
+import jwt
+
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pwdlib import PasswordHash
@@ -11,6 +15,19 @@ from sqlalchemy.orm import (
 )
 
 
+# --------------------------------------------------
+# JWT Configuration
+# --------------------------------------------------
+
+SECRET_KEY = "change-this-secret-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+
+# --------------------------------------------------
+# Database Configuration
+# --------------------------------------------------
+
 DATABASE_URL = "sqlite:///./users.db"
 
 engine = create_engine(
@@ -20,7 +37,7 @@ engine = create_engine(
 
 
 # --------------------------------------------------
-# Database
+# Database Models
 # --------------------------------------------------
 
 class Base(DeclarativeBase):
@@ -52,6 +69,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
 
+
 class UserLogin(BaseModel):
     email: str
     password: str
@@ -65,14 +83,43 @@ class UserResponse(BaseModel):
     id: int
     email: str
 
+
 class LoginResponse(BaseModel):
-    message: str
- 
+    access_token: str
+    token_type: str
+
+
 # --------------------------------------------------
 # Password Hashing
 # --------------------------------------------------
 
 password_hash = PasswordHash.recommended()
+
+
+# --------------------------------------------------
+# JWT Helper
+# --------------------------------------------------
+
+def create_access_token(user_id: int):
+
+    expires_at = datetime.now(
+        timezone.utc
+    ) + timedelta(
+        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+
+    payload = {
+        "sub": str(user_id),
+        "exp": expires_at
+    }
+
+    access_token = jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+    return access_token
 
 
 # --------------------------------------------------
@@ -133,6 +180,11 @@ def register_user(
 
     return db_user
 
+
+# --------------------------------------------------
+# Login User
+# --------------------------------------------------
+
 @app.post(
     "/login",
     response_model=LoginResponse
@@ -165,6 +217,11 @@ def login_user(
             detail="Invalid email or password"
         )
 
+    access_token = create_access_token(
+        db_user.id
+    )
+
     return {
-        "message": "Login successful"
+        "access_token": access_token,
+        "token_type": "bearer"
     }
