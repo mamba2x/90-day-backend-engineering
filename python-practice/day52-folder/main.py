@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import jwt
+from fastapi.security import OAuth2PasswordBearer
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -14,6 +15,10 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 
+# for protecting routes with JWT authentication
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="login"
+)
 
 # --------------------------------------------------
 # JWT Configuration
@@ -139,6 +144,8 @@ def get_session():
 app = FastAPI()
 
 
+
+
 # --------------------------------------------------
 # Register User
 # --------------------------------------------------
@@ -225,3 +232,51 @@ def login_user(
         "access_token": access_token,
         "token_type": "bearer"
     }
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    session: Session = Depends(get_session)
+):
+
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+
+        user_id = payload.get("sub")
+
+        if user_id is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token"
+            )
+
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    db_user = session.get(
+        User,
+        int(user_id)
+    )
+
+    if db_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    return db_user
+
+@app.get(
+    "/me",
+    response_model=UserResponse
+)
+def get_me( 
+    current_user: User = Depends(get_current_user)
+):
+
+    return current_user
