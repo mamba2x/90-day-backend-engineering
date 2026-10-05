@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pwdlib import PasswordHash
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, ForeignKey
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -62,6 +62,19 @@ class User(Base):
 
     hashed_password: Mapped[str]
 
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    title: Mapped[str]
+
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id")
+    )
+
 
 Base.metadata.create_all(engine)
 
@@ -69,6 +82,19 @@ Base.metadata.create_all(engine)
 # --------------------------------------------------
 # Pydantic Schemas
 # --------------------------------------------------
+
+class TaskCreate(BaseModel):
+    title: str
+
+
+class TaskResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+    id: int
+    title: str
+    owner_id: int
 
 class UserCreate(BaseModel):
     email: str
@@ -280,3 +306,78 @@ def get_me(
 ):
 
     return current_user
+
+@app.post(
+    "/tasks",
+    response_model=TaskResponse,
+    status_code=201
+)
+def create_task(
+    task: TaskCreate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    db_task = Task(
+        title=task.title,
+        owner_id=current_user.id
+    )
+    session.add(db_task)
+    session.commit()
+    session.refresh(db_task)
+    return db_task
+
+# get the current user's tasks
+@app.get(
+    "/tasks",
+    response_model=list[TaskResponse]
+)
+def get_tasks(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    return session.scalars(
+        select(Task).where(
+            Task.owner_id == current_user.id
+        )
+    ).all()
+
+def get_owned_task_or_404(
+    task_id: int,
+    current_user: User,
+    session: Session
+):
+
+    task = session.get(
+        Task,
+        task_id
+    )
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    if task.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Not allowed"
+        )
+
+    return task
+
+@app.get(
+    "/tasks/{task_id}",
+    response_model=TaskResponse
+)
+def get_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+
+    return get_owned_task_or_404(
+        task_id,
+        current_user,
+        session
+    )
