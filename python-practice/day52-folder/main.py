@@ -114,6 +114,9 @@ class UserResponse(BaseModel):
     id: int
     email: str
 
+class TaskUpdate(BaseModel):
+    title: str | None = None
+
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -381,3 +384,32 @@ def get_task(
         current_user,
         session
     )
+
+@app.patch(
+    "/tasks/{task_id}",
+    response_model=TaskResponse
+)
+def update_task(
+    task_id: int,
+    task_update: TaskUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+
+    task = get_owned_task_or_404(
+        task_id,
+        current_user,
+        session
+    )
+
+    update_data = task_update.model_dump(
+        exclude_unset=True
+    )
+
+    for field, value in update_data.items():
+        setattr(task, field, value)
+
+    session.commit()
+    session.refresh(task)
+
+    return task
