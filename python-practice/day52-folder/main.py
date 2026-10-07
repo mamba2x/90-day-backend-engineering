@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
-
+from fastapi.middleware.cors import CORSMiddleware
+import os
 import jwt
 from fastapi.security import OAuth2PasswordBearer
 
@@ -14,6 +15,20 @@ from sqlalchemy.orm import (
     Session,
     mapped_column,
 )
+app = FastAPI()
+
+
+allowed_origins = [
+    "http://localhost:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # for protecting routes with JWT authentication
 oauth2_scheme = OAuth2PasswordBearer(
@@ -24,7 +39,7 @@ oauth2_scheme = OAuth2PasswordBearer(
 # JWT Configuration
 # --------------------------------------------------
 
-SECRET_KEY = "change-this-secret-in-production"
+SECRET_KEY = os.getenv("SECRET_KEY","dev-secret-only")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -170,7 +185,6 @@ def get_session():
 # FastAPI Application
 # --------------------------------------------------
 
-app = FastAPI()
 
 
 
