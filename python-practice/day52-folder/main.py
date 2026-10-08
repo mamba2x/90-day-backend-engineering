@@ -1,10 +1,15 @@
 from datetime import datetime, timedelta, timezone
-from fastapi.middleware.cors import CORSMiddleware
 import os
+
 import jwt
-from fastapi.security import OAuth2PasswordBearer
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+)
+
 from pydantic import BaseModel, ConfigDict
 from pwdlib import PasswordHash
 
@@ -15,11 +20,22 @@ from sqlalchemy.orm import (
     Session,
     mapped_column,
 )
+
+
+# --------------------------------------------------
+# FastAPI Application
+# --------------------------------------------------
+
 app = FastAPI()
 
 
+# --------------------------------------------------
+# CORS Configuration
+# --------------------------------------------------
+
 allowed_origins = [
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(
@@ -30,17 +46,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# for protecting routes with JWT authentication
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="login"
-)
+
+# --------------------------------------------------
+# Bearer Authentication
+# --------------------------------------------------
+
+bearer_scheme = HTTPBearer()
+
 
 # --------------------------------------------------
 # JWT Configuration
 # --------------------------------------------------
 
-SECRET_KEY = os.getenv("SECRET_KEY","dev-secret-only")
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "dev-secret-only"
+)
+
 ALGORITHM = "HS256"
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
@@ -52,7 +76,9 @@ DATABASE_URL = "sqlite:///./users.db"
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={
+        "check_same_thread": False
+    }
 )
 
 
@@ -77,6 +103,7 @@ class User(Base):
 
     hashed_password: Mapped[str]
 
+
 class Task(Base):
     __tablename__ = "tasks"
 
@@ -98,19 +125,6 @@ Base.metadata.create_all(engine)
 # Pydantic Schemas
 # --------------------------------------------------
 
-class TaskCreate(BaseModel):
-    title: str
-
-
-class TaskResponse(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True
-    )
-
-    id: int
-    title: str
-    owner_id: int
-
 class UserCreate(BaseModel):
     email: str
     password: str
@@ -129,13 +143,28 @@ class UserResponse(BaseModel):
     id: int
     email: str
 
-class TaskUpdate(BaseModel):
-    title: str | None = None
-
 
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
+
+
+class TaskCreate(BaseModel):
+    title: str
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = None
+
+
+class TaskResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+    id: int
+    title: str
+    owner_id: int
 
 
 # --------------------------------------------------
@@ -149,7 +178,9 @@ password_hash = PasswordHash.recommended()
 # JWT Helper
 # --------------------------------------------------
 
-def create_access_token(user_id: int):
+def create_access_token(
+    user_id: int
+):
 
     expires_at = datetime.now(
         timezone.utc
@@ -182,11 +213,87 @@ def get_session():
 
 
 # --------------------------------------------------
-# FastAPI Application
+# Current User Dependency
 # --------------------------------------------------
 
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(
+        bearer_scheme
+    ),
+    session: Session = Depends(get_session)
+):
+
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+
+        user_id = payload.get("sub")
+
+        if user_id is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token"
+            )
+
+        user_id = int(user_id)
+
+    except (
+        jwt.InvalidTokenError,
+        ValueError,
+        TypeError
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    db_user = session.get(
+        User,
+        user_id
+    )
+
+    if db_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    return db_user
 
 
+# --------------------------------------------------
+# Task Ownership Helper
+# --------------------------------------------------
+
+def get_owned_task_or_404(
+    task_id: int,
+    current_user: User,
+    session: Session
+):
+
+    task = session.get(
+        Task,
+        task_id
+    )
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    if task.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Not allowed"
+        )
+
+    return task
 
 
 # --------------------------------------------------
@@ -275,54 +382,28 @@ def login_user(
         "access_token": access_token,
         "token_type": "bearer"
     }
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    session: Session = Depends(get_session)
-):
 
-    try:
-        payload = jwt.decode(
-            token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM]
-        )
 
-        user_id = payload.get("sub")
-
-        if user_id is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid token"
-            )
-
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
-
-    db_user = session.get(
-        User,
-        int(user_id)
-    )
-
-    if db_user is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
-
-    return db_user
+# --------------------------------------------------
+# Current User
+# --------------------------------------------------
 
 @app.get(
     "/me",
     response_model=UserResponse
 )
-def get_me( 
-    current_user: User = Depends(get_current_user)
+def get_me(
+    current_user: User = Depends(
+        get_current_user
+    )
 ):
 
     return current_user
+
+
+# --------------------------------------------------
+# Create Task
+# --------------------------------------------------
 
 @app.post(
     "/tasks",
@@ -331,57 +412,54 @@ def get_me(
 )
 def create_task(
     task: TaskCreate,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
+    current_user: User = Depends(
+        get_current_user
+    ),
+    session: Session = Depends(
+        get_session
+    )
 ):
+
     db_task = Task(
         title=task.title,
         owner_id=current_user.id
     )
+
     session.add(db_task)
     session.commit()
     session.refresh(db_task)
+
     return db_task
 
-# get the current user's tasks
+
+# --------------------------------------------------
+# Get Current User's Tasks
+# --------------------------------------------------
+
 @app.get(
     "/tasks",
     response_model=list[TaskResponse]
 )
 def get_tasks(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
+    current_user: User = Depends(
+        get_current_user
+    ),
+    session: Session = Depends(
+        get_session
+    )
 ):
+
     return session.scalars(
         select(Task).where(
-            Task.owner_id == current_user.id
+            Task.owner_id
+            == current_user.id
         )
     ).all()
 
-def get_owned_task_or_404(
-    task_id: int,
-    current_user: User,
-    session: Session
-):
 
-    task = session.get(
-        Task,
-        task_id
-    )
-
-    if task is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found"
-        )
-
-    if task.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=403,
-            detail="Not allowed"
-        )
-
-    return task
+# --------------------------------------------------
+# Get Single Owned Task
+# --------------------------------------------------
 
 @app.get(
     "/tasks/{task_id}",
@@ -389,8 +467,12 @@ def get_owned_task_or_404(
 )
 def get_task(
     task_id: int,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
+    current_user: User = Depends(
+        get_current_user
+    ),
+    session: Session = Depends(
+        get_session
+    )
 ):
 
     return get_owned_task_or_404(
@@ -399,6 +481,11 @@ def get_task(
         session
     )
 
+
+# --------------------------------------------------
+# Update Owned Task
+# --------------------------------------------------
+
 @app.patch(
     "/tasks/{task_id}",
     response_model=TaskResponse
@@ -406,8 +493,12 @@ def get_task(
 def update_task(
     task_id: int,
     task_update: TaskUpdate,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
+    current_user: User = Depends(
+        get_current_user
+    ),
+    session: Session = Depends(
+        get_session
+    )
 ):
 
     task = get_owned_task_or_404(
@@ -421,9 +512,41 @@ def update_task(
     )
 
     for field, value in update_data.items():
-        setattr(task, field, value)
+        setattr(
+            task,
+            field,
+            value
+        )
 
     session.commit()
     session.refresh(task)
 
     return task
+
+
+# --------------------------------------------------
+# Delete Owned Task
+# --------------------------------------------------
+
+@app.delete(
+    "/tasks/{task_id}",
+    status_code=204
+)
+def delete_task(
+    task_id: int,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    session: Session = Depends(
+        get_session
+    )
+):
+
+    task = get_owned_task_or_404(
+        task_id,
+        current_user,
+        session
+    )
+
+    session.delete(task)
+    session.commit()
