@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import os
-
+import logging
 import jwt
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -72,7 +72,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Database Configuration
 # --------------------------------------------------
 
-DATABASE_URL = "sqlite:///./users.db"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///./users.db"
+)
 
 engine = create_engine(
     DATABASE_URL,
@@ -81,6 +84,11 @@ engine = create_engine(
     }
 )
 
+logging.basicConfig(
+    level=logging.INFO
+)
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------
 # Database Models
@@ -300,6 +308,23 @@ def get_owned_task_or_404(
 # Register User
 # --------------------------------------------------
 
+@app.get("/")
+def root():
+    return {
+        "message": "Task API is running"
+    }
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok"
+    }
+@app.on_event("startup")
+def startup_event():
+    logger.info(
+        "FastAPI application started"
+    )
 @app.post(
     "/register",
     response_model=UserResponse,
