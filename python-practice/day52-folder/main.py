@@ -77,11 +77,32 @@ DATABASE_URL = os.getenv(
     "sqlite:///./users.db"
 )
 
+# Support PostgreSQL URLs provided by hosting platforms.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgres://",
+        "postgresql+psycopg://",
+        1
+    )
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql://",
+        "postgresql+psycopg://",
+        1
+    )
+
+# SQLite needs this option for FastAPI's threaded environment.
+# PostgreSQL does not.
+connect_args = (
+    {"check_same_thread": False}
+    if DATABASE_URL.startswith("sqlite")
+    else {}
+)
+
 engine = create_engine(
     DATABASE_URL,
-    connect_args={
-        "check_same_thread": False
-    }
+    connect_args=connect_args,
+    pool_pre_ping=True
 )
 
 logging.basicConfig(
