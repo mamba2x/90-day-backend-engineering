@@ -146,8 +146,12 @@ class Task(Base):
         ForeignKey("users.id")
     )
 
+    priority: Mapped[int] = mapped_column(
+    default=3,
+    server_default="3",
+    nullable=False
+)
 
-Base.metadata.create_all(engine)
 
 
 # --------------------------------------------------
