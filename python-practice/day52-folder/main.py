@@ -151,6 +151,9 @@ class Task(Base):
     server_default="3",
     nullable=False
 )
+    description: Mapped[str | None] = mapped_column(
+    nullable=True
+)
 
 
 
