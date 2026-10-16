@@ -154,6 +154,9 @@ class Task(Base):
     description: Mapped[str | None] = mapped_column(
     nullable=True
 )
+    details: Mapped[str | None] = mapped_column(
+    nullable=True
+)
 
 
 
